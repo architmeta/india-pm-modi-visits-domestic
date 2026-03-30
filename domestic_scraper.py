@@ -142,7 +142,7 @@ CITY_TO_STATE = {
     "kochi": "Kerala", "cochin": "Kerala", "kozhikode": "Kerala",
     "calicut": "Kerala", "thrissur": "Kerala", "kannur": "Kerala",
     "kollam": "Kerala", "alappuzha": "Kerala", "palakkad": "Kerala",
-    "kasaragod": "Kerala", "varkala": "Kerala",
+    "kasaragod": "Kerala", "varkala": "Kerala", "keralam": "Kerala", 
     # Madhya Pradesh
     "bhopal": "Madhya Pradesh", "indore": "Madhya Pradesh",
     "jabalpur": "Madhya Pradesh", "gwalior": "Madhya Pradesh",
