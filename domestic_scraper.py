@@ -8,8 +8,8 @@ OUTPUT COLUMNS:
   serial_no  — website chronological order (1 = most recent)
   period     — "Mar 28, 2026 - Mar 28, 2026"
   year       — 2026
-  state      — State or UT name
-  city       — City/town name (blank when a state was listed directly)
+  state      — One of 28 states or 8 UTs (or "Unknown" if unresolved)
+  city       — City/town name (blank when only a state/UT was listed)
 """
 
 import requests
@@ -38,50 +38,84 @@ DATE_RE   = re.compile(
 )
 STATE_SEP = re.compile(r"\s*&\s*|\s+and\s+", re.IGNORECASE)
 
-# ── All Indian States and UTs ─────────────────────────────────────────────────
-STATES = {s.lower(): s for s in [
+# ── Canonical 28 States + 8 UTs ───────────────────────────────────────────────
+
+VALID_STATES = {
+    # 28 States
     "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
     "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
     "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
     "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
     "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
-    "Delhi", "Jammu and Kashmir", "Jammu", "Kashmir", "Ladakh",
-    "Puducherry", "Pondicherry", "Chandigarh", "Andaman and Nicobar",
-    "Lakshadweep", "Keralam", "Dadra and Nagar Haveli", "Daman and Diu",
-]}
+    # 8 Union Territories
+    "Andaman and Nicobar Islands", "Chandigarh",
+    "Dadra and Nagar Haveli and Daman and Diu",
+    "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
+}
 
-# ── City → State mapping ──────────────────────────────────────────────────────
+# For quick case-insensitive lookup
+VALID_STATES_MAP = {s.lower(): s for s in VALID_STATES}
+
+# Aliases / legacy names / abbreviations → canonical state/UT
+STATE_ALIASES = {
+    "pondicherry": "Puducherry",
+    "andaman and nicobar": "Andaman and Nicobar Islands",
+    "andaman & nicobar": "Andaman and Nicobar Islands",
+    "a&n islands": "Andaman and Nicobar Islands",
+    "a&n": "Andaman and Nicobar Islands",
+    "dadra and nagar haveli": "Dadra and Nagar Haveli and Daman and Diu",
+    "daman and diu": "Dadra and Nagar Haveli and Daman and Diu",
+    "daman & diu": "Dadra and Nagar Haveli and Daman and Diu",
+    "uttaranchal": "Uttarakhand",
+    "orissa": "Odisha",
+    "j & k": "Jammu and Kashmir",
+    "j&k": "Jammu and Kashmir",
+    "jk": "Jammu and Kashmir",
+    "kashmir": "Jammu and Kashmir",
+}
+
+# ── City → canonical state/UT mapping ────────────────────────────────────────
+
 CITY_TO_STATE = {
     # Andhra Pradesh
     "visakhapatnam": "Andhra Pradesh", "vizag": "Andhra Pradesh",
     "vijayawada": "Andhra Pradesh", "amaravati": "Andhra Pradesh",
-    "tirupati": "Andhra Pradesh", "guntur": "Andhra Pradesh",
-    "nellore": "Andhra Pradesh", "kurnool": "Andhra Pradesh",
+    "amaravathi": "Andhra Pradesh", "tirupati": "Andhra Pradesh",
+    "guntur": "Andhra Pradesh", "nellore": "Andhra Pradesh",
+    "kurnool": "Andhra Pradesh",
     # Arunachal Pradesh
-    "itanagar": "Arunachal Pradesh",
+    "itanagar": "Arunachal Pradesh", "aalo": "Arunachal Pradesh",
     # Assam
     "guwahati": "Assam", "dispur": "Assam", "jorhat": "Assam",
     "dibrugarh": "Assam", "silchar": "Assam", "tezpur": "Assam",
     # Bihar
     "patna": "Bihar", "gaya": "Bihar", "muzaffarpur": "Bihar",
     "bhagalpur": "Bihar", "darbhanga": "Bihar", "nalanda": "Bihar",
-    "bodh gaya": "Bihar",
+    "bodh gaya": "Bihar", "ara": "Bihar", "banka": "Bihar",
+    "bhabua": "Bihar", "buxar": "Bihar", "jehanabad": "Bihar",
+    "katihar": "Bihar", "motihari": "Bihar", "nawada": "Bihar",
+    "patna sahib": "Bihar", "saharsa": "Bihar", "sasaram": "Bihar",
+    "siwan": "Bihar",
     # Chhattisgarh
     "raipur": "Chhattisgarh", "bilaspur": "Chhattisgarh",
     "durg": "Chhattisgarh", "bhilai": "Chhattisgarh",
+    "jagdalpur": "Chhattisgarh", "korba": "Chhattisgarh",
+    "raigarh": "Chhattisgarh",
     # Delhi / NCR
     "new delhi": "Delhi", "delhi": "Delhi",
     "noida": "Uttar Pradesh", "greater noida": "Uttar Pradesh",
     "gurgaon": "Haryana", "gurugram": "Haryana", "faridabad": "Haryana",
     # Goa
     "panaji": "Goa", "panjim": "Goa", "margao": "Goa", "vasco": "Goa",
+    "vasco da gama": "Goa", "mapusa": "Goa",
     # Gujarat
     "ahmedabad": "Gujarat", "surat": "Gujarat", "vadodara": "Gujarat",
     "rajkot": "Gujarat", "gandhinagar": "Gujarat", "bhavnagar": "Gujarat",
     "jamnagar": "Gujarat", "anand": "Gujarat", "morbi": "Gujarat",
     "amreli": "Gujarat", "somnath": "Gujarat", "dwarka": "Gujarat",
     "bharuch": "Gujarat", "navsari": "Gujarat", "vapi": "Gujarat",
-    "dahod": "Gujarat", "kevadia": "Gujarat", "statue of unity": "Gujarat",
+    "dahod": "Gujarat", "kevadia": "Gujarat",
+    "statue of unity": "Gujarat", "kutch": "Gujarat", "bhuj": "Gujarat",
     # Haryana
     "ambala": "Haryana", "hisar": "Haryana", "panipat": "Haryana",
     "rohtak": "Haryana", "sonipat": "Haryana", "karnal": "Haryana",
@@ -93,19 +127,22 @@ CITY_TO_STATE = {
     "solan": "Himachal Pradesh", "una": "Himachal Pradesh",
     # Jharkhand
     "ranchi": "Jharkhand", "jamshedpur": "Jharkhand",
-    "dhanbad": "Jharkhand", "bokaro": "Jharkhand", "hazaribagh": "Jharkhand",
+    "dhanbad": "Jharkhand", "bokaro": "Jharkhand",
+    "hazaribagh": "Jharkhand", "dumka": "Jharkhand",
+    "khunti": "Jharkhand", "sahibganj": "Jharkhand",
     # Karnataka
     "bengaluru": "Karnataka", "bangalore": "Karnataka",
     "mysuru": "Karnataka", "mysore": "Karnataka",
     "mangaluru": "Karnataka", "mangalore": "Karnataka",
     "hubli": "Karnataka", "dharwad": "Karnataka", "belagavi": "Karnataka",
     "kalaburagi": "Karnataka", "tumkur": "Karnataka", "shivamogga": "Karnataka",
+    "udupi": "Karnataka", "bidar": "Karnataka",
     # Kerala
     "thiruvananthapuram": "Kerala", "trivandrum": "Kerala",
     "kochi": "Kerala", "cochin": "Kerala", "kozhikode": "Kerala",
     "calicut": "Kerala", "thrissur": "Kerala", "kannur": "Kerala",
     "kollam": "Kerala", "alappuzha": "Kerala", "palakkad": "Kerala",
-    "kasaragod": "Kerala", "trippunithura": "Kerala", "varkala": "Kerala",
+    "kasaragod": "Kerala", "varkala": "Kerala",
     # Madhya Pradesh
     "bhopal": "Madhya Pradesh", "indore": "Madhya Pradesh",
     "jabalpur": "Madhya Pradesh", "gwalior": "Madhya Pradesh",
@@ -116,14 +153,15 @@ CITY_TO_STATE = {
     "mhow": "Madhya Pradesh", "sarangpur": "Madhya Pradesh",
     "sehore": "Madhya Pradesh", "tekanpur": "Madhya Pradesh",
     # Maharashtra
-    "mumbai": "Maharashtra", "pune": "Maharashtra", "nagpur": "Maharashtra",
-    "nashik": "Maharashtra", "aurangabad": "Maharashtra",
-    "solapur": "Maharashtra", "kolhapur": "Maharashtra", "thane": "Maharashtra",
-    "navi mumbai": "Maharashtra", "amravati": "Maharashtra",
-    "latur": "Maharashtra", "nanded": "Maharashtra", "jalgaon": "Maharashtra",
+    "mumbai": "Maharashtra", "pune": "Maharashtra",
+    "nagpur": "Maharashtra", "nashik": "Maharashtra",
+    "aurangabad": "Maharashtra", "chhatrapati sambhajinagar": "Maharashtra",
+    "solapur": "Maharashtra", "kolhapur": "Maharashtra",
+    "thane": "Maharashtra", "navi mumbai": "Maharashtra",
+    "amravati": "Maharashtra", "latur": "Maharashtra",
+    "nanded": "Maharashtra", "jalgaon": "Maharashtra",
     "wardha": "Maharashtra", "shirdi": "Maharashtra",
-    "ins vikrant": "Maharashtra", "maharastra": "Maharashtra",
-    "sona": "Maharashtra",
+    "ins vikrant": "Maharashtra",
     # Manipur
     "imphal": "Manipur",
     # Meghalaya
@@ -135,13 +173,14 @@ CITY_TO_STATE = {
     # Odisha
     "bhubaneswar": "Odisha", "bhubaneshwar": "Odisha",
     "cuttack": "Odisha", "puri": "Odisha",
-    "rourkela": "Odisha", "berhampur": "Odisha", "sambalpur": "Odisha",
-    "konark": "Odisha", "khurda": "Odisha", "koraput": "Odisha",
+    "rourkela": "Odisha", "berhampur": "Odisha",
+    "sambalpur": "Odisha", "konark": "Odisha",
+    "khurda": "Odisha", "koraput": "Odisha",
     # Punjab
     "amritsar": "Punjab", "ludhiana": "Punjab", "jalandhar": "Punjab",
     "patiala": "Punjab", "pathankot": "Punjab",
-    "ropar": "Punjab", "rupnagar": "Punjab",
-    "bhatinda": "Punjab", "faridkot": "Punjab",
+    "ropar": "Punjab", "rupnagar": "Punjab", "bhatinda": "Punjab",
+    "faridkot": "Punjab",
     # Rajasthan
     "jaipur": "Rajasthan", "jodhpur": "Rajasthan", "udaipur": "Rajasthan",
     "kota": "Rajasthan", "ajmer": "Rajasthan", "bikaner": "Rajasthan",
@@ -150,13 +189,14 @@ CITY_TO_STATE = {
     "churu": "Rajasthan", "jhunjhunu": "Rajasthan",
     "pokhran": "Rajasthan", "tonk": "Rajasthan",
     # Sikkim
-    "gangtok": "Sikkim",
+    "gangtok": "Sikkim", "namchi": "Sikkim",
     # Tamil Nadu
     "chennai": "Tamil Nadu", "madras": "Tamil Nadu",
     "coimbatore": "Tamil Nadu", "madurai": "Tamil Nadu",
     "tiruchirappalli": "Tamil Nadu", "trichy": "Tamil Nadu",
-    "tiruchy": "Tamil Nadu", "salem": "Tamil Nadu", "tirunelveli": "Tamil Nadu",
-    "vellore": "Tamil Nadu", "erode": "Tamil Nadu", "thoothukudi": "Tamil Nadu",
+    "tiruchy": "Tamil Nadu", "salem": "Tamil Nadu",
+    "tirunelveli": "Tamil Nadu", "vellore": "Tamil Nadu",
+    "erode": "Tamil Nadu", "thoothukudi": "Tamil Nadu",
     "kancheepuram": "Tamil Nadu", "thanjavur": "Tamil Nadu",
     "rameswaram": "Tamil Nadu", "ooty": "Tamil Nadu",
     "hosur": "Tamil Nadu", "kanyakumari": "Tamil Nadu",
@@ -205,45 +245,53 @@ CITY_TO_STATE = {
     "howrah": "West Bengal", "siliguri": "West Bengal",
     "durgapur": "West Bengal", "asansol": "West Bengal",
     "darjeeling": "West Bengal", "cooch behar": "West Bengal",
-    # Union Territories
+    "jalpaiguri": "West Bengal", "malda": "West Bengal",
+    # UTs
     "chandigarh": "Chandigarh",
     "puducherry": "Puducherry", "pondicherry": "Puducherry",
-    "port blair": "Andaman and Nicobar",
-    "andaman": "Andaman and Nicobar", "nicobar": "Andaman and Nicobar",
-    "silvassa": "Dadra and Nagar Haveli",
-    "dadra": "Dadra and Nagar Haveli", "nagar haveli": "Dadra and Nagar Haveli",
-    "diu": "Daman and Diu", "daman": "Daman and Diu",
-    # Jammu and Kashmir / Ladakh
+    "port blair": "Andaman and Nicobar Islands",
+    "andaman": "Andaman and Nicobar Islands",
+    "nicobar": "Andaman and Nicobar Islands",
+    "silvassa": "Dadra and Nagar Haveli and Daman and Diu",
+    "dadra": "Dadra and Nagar Haveli and Daman and Diu",
+    "nagar haveli": "Dadra and Nagar Haveli and Daman and Diu",
+    "daman": "Dadra and Nagar Haveli and Daman and Diu",
+    "diu":   "Dadra and Nagar Haveli and Daman and Diu",
+    # J&K / Ladakh
     "srinagar": "Jammu and Kashmir",
     "jammu": "Jammu and Kashmir",
     "akhnoor": "Jammu and Kashmir", "chanderkote": "Jammu and Kashmir",
     "gurez valley": "Jammu and Kashmir", "katra": "Jammu and Kashmir",
     "kashmir": "Jammu and Kashmir", "kashmir valley": "Jammu and Kashmir",
     "leh": "Ladakh", "kargil": "Ladakh",
-    # Bihar cities (additional)
-    "ara": "Bihar", "banka": "Bihar", "bhabua": "Bihar",
-    "buxar": "Bihar", "jehanabad": "Bihar", "katihar": "Bihar",
-    "motihari": "Bihar", "nawada": "Bihar", "patna sahib": "Bihar",
-    "saharsa": "Bihar", "sasaram": "Bihar", "siwan": "Bihar",
-    # Jharkhand cities (additional)
-    "dumka": "Jharkhand", "khunti": "Jharkhand", "sahibganj": "Jharkhand",
-    # Arunachal Pradesh (additional)
-    "aalo": "Arunachal Pradesh",
-    # Andhra Pradesh (additional)
-    "amaravathi": "Andhra Pradesh",
-    # Chhattisgarh (additional)
-    "raigarh": "Chhattisgarh",
-    # Gujarat (additional)
-    "kutch": "Gujarat",
 }
 
 
-def is_state(name: str) -> bool:
-    return name.lower() in STATES
+# ── Helpers to resolve state/city cleanly ─────────────────────────────────────
+
+def normalize_state_token(token: str) -> str | None:
+    """Return canonical state/UT if token is a state name or alias, else None."""
+    t = token.strip()
+    if not t:
+        return None
+    low = t.lower()
+
+    if low in VALID_STATES_MAP:
+        return VALID_STATES_MAP[low]
+
+    if low in STATE_ALIASES:
+        return STATE_ALIASES[low]
+
+    return None
 
 
-def get_state_for_city(city: str) -> str:
-    return CITY_TO_STATE.get(city.lower().strip(), "")
+def get_state_for_city(city: str) -> str | None:
+    """Map city → canonical state/UT, or None if unknown."""
+    key = city.lower().strip()
+    state = CITY_TO_STATE.get(key)
+    if state and state in VALID_STATES:
+        return state
+    return None
 
 
 def clean_name(raw: str) -> str:
@@ -254,31 +302,52 @@ def clean_name(raw: str) -> str:
     return name.strip()
 
 
-def get_locations_from_title(title: str) -> list:
+def get_locations_from_title(title: str) -> list[dict]:
+    """
+    Parse title and return list of {state, city} with:
+      - state ∈ VALID_STATES or "Unknown"
+      - city is cleaned city name or ""
+    """
     m = re.search(r"visit to (.+?)(?:\s*\[|$)", title, re.IGNORECASE)
     if not m:
         return []
+
     dest = re.sub(r"\[.*?\]", "", m.group(1)).strip()
     parts = STATE_SEP.split(dest)
 
-    locations = []
+    locations: list[dict] = []
     for part in parts:
         name = clean_name(part.strip())
         if not name or len(name) < 2:
             continue
-        if is_state(name):
-            locations.append({
-                "state": STATES[name.lower()],
-                "city":  "",
-            })
-        else:
-            state_for_city = get_state_for_city(name)
-            locations.append({
-                "state": state_for_city,
-                "city":  name.title(),
-            })
-    return locations
 
+        # 1. Try as state
+        state = normalize_state_token(name)
+        if state:
+            locations.append({"state": state, "city": ""})
+            continue
+
+        # 2. Try as city
+        state_for_city = get_state_for_city(name)
+        if state_for_city:
+            locations.append({"state": state_for_city, "city": name.title()})
+            continue
+
+        # 3. Fallback: unresolved location → Unknown state, but keep city text
+        locations.append({"state": "Unknown", "city": name.title()})
+
+    # Deduplicate by (state, city)
+    uniq = []
+    seen = set()
+    for loc in locations:
+        key = (loc["state"], loc["city"])
+        if key not in seen:
+            seen.add(key)
+            uniq.append(loc)
+    return uniq
+
+
+# ── Networking / parsing ─────────────────────────────────────────────────────
 
 def get_soup(url: str) -> BeautifulSoup:
     s = requests.Session()
@@ -292,7 +361,7 @@ def get_soup(url: str) -> BeautifulSoup:
     return BeautifulSoup(r.text, "html.parser")
 
 
-def parse_page(soup: BeautifulSoup, page_url: str) -> list:
+def parse_page(soup: BeautifulSoup, page_url: str) -> list[dict]:
     rows = []
     seen = set()
 
@@ -398,6 +467,7 @@ def run(force_full: bool = False):
         if df.empty:
             print("\n⚠  Nothing scraped. Try again in a few minutes.")
             return
+
         df.drop_duplicates(subset=["period", "state", "city"], keep="last", inplace=True)
         df = add_serial_numbers(df)
         df.to_csv(OUTPUT_CSV, index=False)
