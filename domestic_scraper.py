@@ -264,6 +264,12 @@ CITY_TO_STATE = {
     "gurez valley": "Jammu and Kashmir", "katra": "Jammu and Kashmir",
     "kashmir": "Jammu and Kashmir", "kashmir valley": "Jammu and Kashmir",
     "leh": "Ladakh", "kargil": "Ladakh",
+    # Uttar Pradesh / Kerala / Haryana / Maharashtra
+    "ghazipur": "Uttar Pradesh",
+    "trippunithura": "Kerala",
+    "sona": "Haryana",
+    "maharastra": "Maharashtra",
+
 }
 
 
