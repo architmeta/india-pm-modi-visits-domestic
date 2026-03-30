@@ -67,6 +67,10 @@ from `period` in a separate analysis script.
 | `state` | One of 28 states or 8 UTs, or `Unknown` when unresolved | Assam |
 | `city` | City mentioned in the visit title, if any | Guwahati |
 
+(Older versions of the dataset used `start_date`, `end_date`, `duration_days`,
+`multi_state`, and `source_url`; the current version focuses on a clean,
+normalised state/city breakdown from the PMO listing itself.)
+
 ---
 
 ## Data note — multi-state visits
