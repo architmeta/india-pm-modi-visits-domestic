@@ -60,7 +60,7 @@ analysis-ready dataset by:
 | `duration_days` | Number of days (inclusive) | 2 |
 | `year` | 4-digit year extracted from date | 2026 |
 | `multi_state` | YES if split from a multi-state visit, NO otherwise | YES |
-| `source_url` | URL of the page this entry was scraped from | https://www.pmindia.gov.in/... |
+| `source_url` | URL of the page this entry was scraped from | https://www.pmindia.gov.in/en/pm-visits/?visittype=domestic_visit; https://www.pmindia.gov.in/en/pm-visits/page/2/?visittype=domestic_visit untill page 81|
 
 ---
 
